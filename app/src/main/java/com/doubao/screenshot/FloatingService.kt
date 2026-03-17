@@ -264,7 +264,6 @@ class FloatingService : Service() {
     // ── 发送给豆包（核心修复）────────────────────────────────────────────────
 
     private fun shareToDoubao(uri: Uri) {
-        // 先恢复悬浮球显示
         setFloatVisible(true)
 
         val pm = packageManager
@@ -280,7 +279,7 @@ class FloatingService : Service() {
             return
         }
 
-        // 构建 Share Intent
+        // 方案一：精确启动豆包的分享 Activity
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "image/*"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -289,7 +288,6 @@ class FloatingService : Service() {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 
-        // 用 PackageManager 查询豆包能接收图片分享的 Activity
         val resolveInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.queryIntentActivities(shareIntent, PackageManager.ResolveInfoFlags.of(0L))
         } else {
@@ -302,7 +300,6 @@ class FloatingService : Service() {
         }
 
         if (doubaoActivity != null) {
-            // 精确启动豆包的分享接收 Activity
             val targetIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/*"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -316,21 +313,36 @@ class FloatingService : Service() {
             }
             try {
                 startActivity(targetIntent)
-                // 成功：不弹任何提示，静默完成
+                return // 成功，静默退出
             } catch (e: Exception) {
-                showToast("调用豆包失败：${e.message}")
+                // 精确启动失败，降级到方案二
             }
-        } else {
-            // 豆包已安装但未注册图片分享接收，降级弹出系统分享菜单
-            showToast("豆包不支持直接接收分享，已打开系统分享菜单")
+        }
+
+        // 方案二：setPackage 方式直接发给豆包
+        try {
+            val intent2 = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                setPackage(DOUBAO_PACKAGE)
+            }
+            startActivity(intent2)
+            return
+        } catch (e: Exception) {
+            // 方案二也失败，降级到方案三
+        }
+
+        // 方案三：弹出系统分享菜单（兜底）
+        showToast("无法直接打开豆包，已弹出分享菜单")
+        try {
             val chooser = Intent.createChooser(shareIntent, "发送图片给...").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            try {
-                startActivity(chooser)
-            } catch (e: Exception) {
-                showToast("打开分享菜单失败：${e.message}")
-            }
+            startActivity(chooser)
+        } catch (e: Exception) {
+            showToast("分享失败：${e.message}")
         }
     }
 
