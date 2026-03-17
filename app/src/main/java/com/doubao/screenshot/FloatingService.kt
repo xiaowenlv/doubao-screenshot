@@ -14,7 +14,9 @@ import android.os.*
 import android.provider.MediaStore
 import android.view.*
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.Toast
+import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import java.io.OutputStream
 
