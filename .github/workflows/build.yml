@@ -12,17 +12,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 磁盘清理（释放约 20GB，加速构建）────────────────────────────────
+      # ── 磁盘清理（保留 Android 相关目录）────────────────────────────────
       - name: Free disk space
         run: |
           echo "清理前磁盘空间："
           df -h /
           sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo apt-get clean
           echo "清理后磁盘空间："
           df -h /
@@ -35,10 +33,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-
-      # ── 安装 Android SDK ──────────────────────────────────────────────────
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       # ── Gradle 缓存 ───────────────────────────────────────────────────────
       - name: Cache Gradle packages
@@ -54,10 +48,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # ── 写入 SDK 路径（ANDROID_HOME 在 ubuntu-latest 上已预装）──────────
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
