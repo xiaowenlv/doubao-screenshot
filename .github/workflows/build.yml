@@ -17,14 +17,12 @@ jobs:
         run: |
           echo "清理前磁盘空间："
           df -h /
-          # 删除不需要的大型预装工具
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          # 清理 apt 缓存
           sudo apt-get clean
           echo "清理后磁盘空间："
           df -h /
@@ -38,7 +36,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── Gradle 缓存（核心：避免每次重新下载依赖）──────────────────────────
+      # ── 安装 Android SDK ──────────────────────────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── Gradle 缓存 ───────────────────────────────────────────────────────
       - name: Cache Gradle packages
         uses: actions/cache@v4
         with:
@@ -49,25 +51,13 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # ── Android SDK 缓存 ──────────────────────────────────────────────────
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.ANDROID_HOME }}/build-tools
-            ${{ env.ANDROID_HOME }}/platforms
-          key: android-sdk-${{ runner.os }}-34
-          restore-keys: |
-            android-sdk-${{ runner.os }}-
-
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
