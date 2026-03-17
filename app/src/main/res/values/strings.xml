@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">豆包截图</string>
+    <string name="accessibility_service_label">豆包截图 - 三指三击</string>
+    <string name="accessibility_service_description">监听三指三击手势，触发截图并发送给豆包。不读取任何屏幕内容，不收集任何数据。</string>
+</resources>

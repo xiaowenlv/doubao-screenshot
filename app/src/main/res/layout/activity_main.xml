@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="豆包截图助手"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="一键截图，直接发给豆包识别"
+        android:textSize="14sp"
+        android:layout_marginBottom="32dp"/>
+
+    <TextView
+        android:id="@+id/tv_overlay_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btn_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="授权悬浮窗权限"
+        android:layout_marginBottom="24dp"/>
+
+    <TextView
+        android:id="@+id/tv_acc_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/btn_accessibility"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="开启无障碍服务（三指三击）"
+        android:layout_marginBottom="32dp"/>
+
+    <Button
+        android:id="@+id/btn_start"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="启动悬浮球"
+        android:textSize="16sp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="启动后可关闭此页面。\n触发方式：\n① 点击屏幕右侧悬浮球\n② 三指快速敲击屏幕三下"
+        android:textSize="13sp"
+        android:layout_marginTop="24dp"
+        android:lineSpacingMultiplier="1.5"/>
+
+</LinearLayout>
