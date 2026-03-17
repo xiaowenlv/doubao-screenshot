@@ -14,16 +14,10 @@ import android.os.*
 import android.provider.MediaStore
 import android.view.*
 import android.widget.ImageButton
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import java.io.OutputStream
 
-/**
- * 核心前台服务：
- *  1. 显示可拖动悬浮球
- *  2. 接收截图广播（来自悬浮球点击 或 TapAccessibilityService）
- *  3. 使用 MediaProjection 截图
- *  4. 通过 Android Share Intent 发送给豆包
- */
 class FloatingService : Service() {
 
     companion object {
@@ -31,6 +25,10 @@ class FloatingService : Service() {
         private const val CHANNEL_ID = "doubao_screenshot_channel"
         private const val NOTIF_ID = 1
         private const val VIRTUAL_DISPLAY_NAME = "DoubaoCapture"
+        private const val DOUBAO_PACKAGE = "com.larus.nova"
+
+        // 悬浮球尺寸：72dp，足够大又不遮挡内容
+        private const val BALL_SIZE_DP = 72
     }
 
     private lateinit var windowManager: WindowManager
@@ -72,11 +70,8 @@ class FloatingService : Service() {
             projectionReceiver,
             IntentFilter(PermissionActivity.ACTION_PROJECTION_RESULT)
         )
-        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            android.content.Context.RECEIVER_NOT_EXPORTED
-        } else {
-            0
-        }
+        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            Context.RECEIVER_NOT_EXPORTED else 0
         registerReceiver(
             triggerReceiver,
             IntentFilter(TapAccessibilityService.ACTION_TRIGGER_SCREENSHOT),
@@ -102,17 +97,24 @@ class FloatingService : Service() {
 
     // ── 悬浮球 ──────────────────────────────────────────────────────────────
 
+    private fun dpToPx(dp: Int): Int =
+        (dp * resources.displayMetrics.density + 0.5f).toInt()
+
     private fun showFloatingBall() {
+        val sizePx = dpToPx(BALL_SIZE_DP)
+
         val btn = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_camera)
-            setBackgroundResource(android.R.drawable.btn_default)
+            // 半透明紫色圆形背景，醒目但不突兀
+            setBackgroundColor(0xCC6200EE.toInt())
             contentDescription = "截图发豆包"
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
             setOnClickListener { requestScreenshot() }
         }
 
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            sizePx, sizePx,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
@@ -120,26 +122,38 @@ class FloatingService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 16
-            y = 300
+            // 右下角，距底部 120dp（避开导航栏），距右边 16dp
+            gravity = Gravity.BOTTOM or Gravity.END
+            x = dpToPx(16)
+            y = dpToPx(120)
         }
 
         // 拖动支持
         var initialX = 0; var initialY = 0
         var touchX = 0f; var touchY = 0f
+        var isDragging = false
+
         btn.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = params.x; initialY = params.y
                     touchX = event.rawX; touchY = event.rawY
+                    isDragging = false
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = initialX - (event.rawX - touchX).toInt()
-                    params.y = initialY + (event.rawY - touchY).toInt()
-                    windowManager.updateViewLayout(v, params)
-                    true
+                    val dx = event.rawX - touchX
+                    val dy = event.rawY - touchY
+                    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                        isDragging = true
+                        params.x = initialX - dx.toInt()
+                        params.y = initialY - dy.toInt()
+                        windowManager.updateViewLayout(v, params)
+                    }
+                    isDragging
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isDragging) true else false
                 }
                 else -> false
             }
@@ -157,7 +171,6 @@ class FloatingService : Service() {
 
     private fun requestScreenshot() {
         if (mediaProjection == null) {
-            // 首次需要用户授权
             val intent = Intent(this, PermissionActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
@@ -168,11 +181,8 @@ class FloatingService : Service() {
     }
 
     private fun doScreenshot() {
-        // 隐藏悬浮球，等一帧渲染完再截图
         setFloatVisible(false)
-        handler.postDelayed({
-            captureScreen()
-        }, 300)
+        handler.postDelayed({ captureScreen() }, 300)
     }
 
     private fun captureScreen() {
@@ -208,16 +218,22 @@ class FloatingService : Service() {
 
                 val cropped = Bitmap.createBitmap(bitmap, 0, 0, width, height)
                 bitmap.recycle()
-
                 saveAndShare(cropped)
+            } else {
+                setFloatVisible(true)
+                showToast("截图失败，请重试")
             }
-            setFloatVisible(true)
         }, 500)
     }
 
     private fun saveAndShare(bitmap: Bitmap) {
-        val uri = saveBitmapToMediaStore(bitmap) ?: return
+        val uri = saveBitmapToMediaStore(bitmap)
         bitmap.recycle()
+        if (uri == null) {
+            setFloatVisible(true)
+            showToast("保存截图失败，请检查存储权限")
+            return
+        }
         shareToDoubao(uri)
     }
 
@@ -243,32 +259,82 @@ class FloatingService : Service() {
         }
     }
 
-    private fun shareToDoubao(uri: Uri) {
-        // 优先直接打开豆包并传入图片；若豆包未安装则弹出系统分享菜单
-        val doubaoPackage = "com.larus.nova" // 豆包包名
+    // ── 发送给豆包（核心修复）────────────────────────────────────────────────
 
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+    private fun shareToDoubao(uri: Uri) {
+        // 先恢复悬浮球显示
+        setFloatVisible(true)
 
         val pm = packageManager
+
+        // 检查豆包是否安装
         val doubaoInstalled = try {
-            pm.getPackageInfo(doubaoPackage, 0)
+            pm.getPackageInfo(DOUBAO_PACKAGE, 0)
             true
         } catch (e: Exception) { false }
 
-        if (doubaoInstalled) {
-            shareIntent.setPackage(doubaoPackage)
-            startActivity(shareIntent)
+        if (!doubaoInstalled) {
+            showToast("未检测到豆包 App，请先安装豆包")
+            return
+        }
+
+        // 构建 Share Intent
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+
+        // 用 PackageManager 查询豆包能接收图片分享的 Activity
+        val resolveInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.queryIntentActivities(shareIntent, PackageManager.ResolveInfoFlags.of(0L))
         } else {
-            // 豆包未安装，弹出系统分享选择器
-            val chooser = Intent.createChooser(shareIntent, "发送给...").apply {
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(shareIntent, 0)
+        }
+
+        val doubaoActivity = resolveInfoList.firstOrNull {
+            it.activityInfo.packageName == DOUBAO_PACKAGE
+        }
+
+        if (doubaoActivity != null) {
+            // 精确启动豆包的分享接收 Activity
+            val targetIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                setClassName(
+                    doubaoActivity.activityInfo.packageName,
+                    doubaoActivity.activityInfo.name
+                )
+            }
+            try {
+                startActivity(targetIntent)
+                // 成功：不弹任何提示，静默完成
+            } catch (e: Exception) {
+                showToast("调用豆包失败：${e.message}")
+            }
+        } else {
+            // 豆包已安装但未注册图片分享接收，降级弹出系统分享菜单
+            showToast("豆包不支持直接接收分享，已打开系统分享菜单")
+            val chooser = Intent.createChooser(shareIntent, "发送图片给...").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            startActivity(chooser)
+            try {
+                startActivity(chooser)
+            } catch (e: Exception) {
+                showToast("打开分享菜单失败：${e.message}")
+            }
+        }
+    }
+
+    private fun showToast(msg: String) {
+        handler.post {
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
     }
 
