@@ -72,10 +72,15 @@ class FloatingService : Service() {
             projectionReceiver,
             IntentFilter(PermissionActivity.ACTION_PROJECTION_RESULT)
         )
+        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            android.content.Context.RECEIVER_NOT_EXPORTED
+        } else {
+            0
+        }
         registerReceiver(
             triggerReceiver,
             IntentFilter(TapAccessibilityService.ACTION_TRIGGER_SCREENSHOT),
-            RECEIVER_NOT_EXPORTED
+            receiverFlags
         )
 
         showFloatingBall()
